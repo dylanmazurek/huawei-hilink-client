@@ -1,0 +1,13 @@
+*.iml
+.gradle
+package-lock.json
+
+/.idea/
+node_modules
+.DS_Store
+/build
+*.list
+src/**.js
+src/*.js
+src/utils/*.js
+**.map
