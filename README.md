@@ -5,12 +5,12 @@ A golang client to interact with Huawei routers/modems
 - [x] Login with username and password
 - [x] Get authentication token
 - [x] Get encryption key
+- [x] Store authentication token
+- [x] Refresh authentication token on expiry
+- [x] Get sms count
 
 ## Future Features
 
-- [ ] Store authentication token
-- [ ] Refresh authentication token on expiry
 - [ ] Get device information
 - [ ] Get device signal
-- [ ] Get sms count
 - [ ] Get sms list
