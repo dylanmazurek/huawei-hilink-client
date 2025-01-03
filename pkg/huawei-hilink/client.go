@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/dylanmazurek/huawei-wifi/pkg/huawei-hilink/crypto"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/crypto"
 )
 
 type Client struct {

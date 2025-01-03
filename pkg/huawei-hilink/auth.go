@@ -9,9 +9,8 @@ import (
 	"net/http"
 	"slices"
 
-	"github.com/dylanmazurek/huawei-wifi/pkg/huawei-hilink/constants"
-	"github.com/dylanmazurek/huawei-wifi/pkg/huawei-hilink/models"
-	"github.com/rs/zerolog/log"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/constants"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/models"
 )
 
 func (c *Client) Login() error {
@@ -46,7 +45,7 @@ func (c *Client) Login() error {
 }
 
 func (c *Client) newSession() error {
-	urlStr := fmt.Sprintf("%s", constants.BASE_URL)
+	urlStr := fmt.Sprintf("http://%s", c.session.Host)
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return err
@@ -78,7 +77,7 @@ func (c *Client) newSession() error {
 }
 
 func (c *Client) newTokenInfo() error {
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "webserver/SesTokInfo")
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "webserver/SesTokInfo")
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return err
@@ -99,13 +98,13 @@ func (c *Client) newTokenInfo() error {
 	var sessionTokenInfo models.SessionTokenInfo
 	err = xml.Unmarshal(byteValue, &sessionTokenInfo)
 
-	c.session.Token = sessionTokenInfo.TokInfo
+	c.session.Token = sessionTokenInfo.TokenInfo
 
 	return err
 }
 
 func (c *Client) getToken() error {
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "webserver/token")
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "webserver/token")
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return err
@@ -142,14 +141,14 @@ func (c *Client) getToken() error {
 }
 
 func (c *Client) challengeToken() error {
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "user/challenge_login")
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "user/challenge_login")
 	nonce, err := c.scram.GetNonce()
 	if err != nil {
 		return err
 	}
 
 	reqBody := models.TokenChallengeReq{
-		Username:   "admin",
+		Username:   c.session.Username,
 		FirstNonce: hex.EncodeToString(nonce),
 		Mode:       1,
 	}
@@ -212,7 +211,7 @@ func (c *Client) authenticateToken() error {
 		return err
 	}
 
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "user/authentication_login")
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "user/authentication_login")
 	nonce, err := c.scram.GetNonce()
 	if err != nil {
 		return err
@@ -262,8 +261,6 @@ func (c *Client) authenticateToken() error {
 		return err
 	}
 
-	log.Info().Msgf("%s", byteValue)
-
 	cookies := resp.Cookies()
 	sessionIdIdx := slices.IndexFunc(cookies, func(cookie *http.Cookie) bool {
 		return cookie.Name == "SessionID"
@@ -291,13 +288,4 @@ func (c *Client) authenticateToken() error {
 	c.session = newSession
 
 	return err
-}
-
-func (c *Client) PrintDebug() {
-	fmt.Printf("SessionID: %s\n", c.session.SessionId)
-
-	finalNonce, _ := c.scram.GetNonce()
-	fmt.Printf("FinalNonce: %s\n", finalNonce)
-	fmt.Printf("Token: %s\n", c.session.Token)
-	fmt.Printf("Token2: %s\n", c.session.Token2)
 }

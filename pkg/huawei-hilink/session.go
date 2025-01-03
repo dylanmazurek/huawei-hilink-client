@@ -1,6 +1,8 @@
 package huaweihilink
 
 type Session struct {
+	Host      string
+	Username  string
 	LoggedIn  bool
 	SessionId string
 

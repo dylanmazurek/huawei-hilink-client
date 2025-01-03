@@ -3,9 +3,9 @@ package models
 import "encoding/xml"
 
 type SessionTokenInfo struct {
-	XMLName xml.Name `xml:"response"`
-	SesInfo string   `xml:"SesInfo"`
-	TokInfo string   `xml:"TokInfo"`
+	XMLName     xml.Name `xml:"response"`
+	SessionInfo string   `xml:"SesInfo"`
+	TokenInfo   string   `xml:"TokInfo"`
 }
 
 type TokenResp struct {

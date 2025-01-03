@@ -1,16 +1,17 @@
 package huaweihilink
 
 import (
+	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
 
-	"github.com/dylanmazurek/huawei-wifi/pkg/huawei-hilink/constants"
-	"github.com/rs/zerolog/log"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/constants"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/models"
 )
 
-func (c *Client) netMode() (*string, error) {
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "net/net-mode")
+func (c *Client) NetMode() (*string, error) {
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "net/net-mode")
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
@@ -29,13 +30,8 @@ func (c *Client) netMode() (*string, error) {
 	return nil, err
 }
 
-func (c *Client) SignalInfo() (*string, error) {
-	// _, err := c.netMode()
-	// if err != nil {
-	// 	return nil, err
-	// }
-
-	urlStr := fmt.Sprintf("%s/%s/%s", constants.BASE_URL, constants.API_PATH, "device/signal")
+func (c *Client) SignalInfo() (*models.SignalInfoResp, error) {
+	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "device/signal")
 	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
 		return nil, err
@@ -52,8 +48,9 @@ func (c *Client) SignalInfo() (*string, error) {
 	}
 
 	byteValue, _ := io.ReadAll(resp.Body)
-	body := string(byteValue)
-	log.Info().Msgf("SignalInfo: %s", body)
 
-	return nil, err
+	var signalInfoResp models.SignalInfoResp
+	err = xml.Unmarshal(byteValue, &signalInfoResp)
+
+	return &signalInfoResp, err
 }
