@@ -17,13 +17,18 @@ func main() {
 		panic(err)
 	}
 
+	// err = client.NewSession2()
+	// if err != nil {
+	// 	panic(err)
+	// }
+
 	err = client.Login()
 	if err != nil {
 		panic(err)
 	}
 
-	//getSignalInfo(client)
-	getSMSInfo(client)
+	getSignalInfo(client)
+	// getSMSInfo(client)
 }
 
 func getSignalInfo(client *huaweihilink.Client) {

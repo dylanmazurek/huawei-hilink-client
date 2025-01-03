@@ -1,20 +1,52 @@
 package huaweihilink
 
 import (
-	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"slices"
 
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/constants"
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/models"
+	"github.com/rs/zerolog/log"
 )
 
+type addAuthHeaderTransport struct {
+	T       http.RoundTripper
+	Session *Session
+}
+
+func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8;enc")
+	req.Header.Set("__RequestVerificationToken", adt.Session.Token2)
+	req.Header.Set("_ResponseSource", "Broswer")
+
+	req.AddCookie(
+		&http.Cookie{
+			Name:  "SessionID",
+			Value: adt.Session.SessionId,
+		},
+	)
+
+	return adt.T.RoundTrip(req)
+}
+
 func (c *Client) Login() error {
-	err := c.newSession()
+	err := c.loadSession()
+	if err == nil {
+		c.internalClient, err = c.createAuthTransport()
+		if err == nil {
+			return nil
+		}
+
+		log.Info().Msg("session loaded but failed to create auth transport")
+	}
+
+	err = c.newSession()
 	if err != nil {
 		return err
 	}
@@ -35,6 +67,11 @@ func (c *Client) Login() error {
 	}
 
 	err = c.authenticateToken()
+	if err != nil {
+		return err
+	}
+
+	err = c.saveSession()
 	if err != nil {
 		return err
 	}
@@ -110,18 +147,6 @@ func (c *Client) getToken() error {
 		return err
 	}
 
-	req.Header.Add("_ResponseSource", "Broswer")
-	req.Header.Add("DNT", "1")
-
-	req.AddCookie(
-		&http.Cookie{
-			Name:     "SessionID",
-			Value:    c.session.SessionId,
-			Path:     "/",
-			HttpOnly: true,
-		},
-	)
-
 	resp, err := c.internalClient.Do(req)
 	if err != nil {
 		return err
@@ -141,7 +166,6 @@ func (c *Client) getToken() error {
 }
 
 func (c *Client) challengeToken() error {
-	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "user/challenge_login")
 	nonce, err := c.scram.GetNonce()
 	if err != nil {
 		return err
@@ -153,44 +177,14 @@ func (c *Client) challengeToken() error {
 		Mode:       1,
 	}
 
-	w := &bytes.Buffer{}
-	xmlHeader := `<?xml version: "1.0" encoding="UTF-8"?>`
-
-	w.WriteString(xmlHeader)
-	xml.NewEncoder(w).Encode(reqBody)
-
-	req, err := http.NewRequest(http.MethodPost, urlStr, bytes.NewBuffer(w.Bytes()))
-	if err != nil {
-		return err
-	}
-
-	req.AddCookie(
-		&http.Cookie{
-			Name:     "SessionID",
-			Value:    c.session.SessionId,
-			Path:     "/",
-			HttpOnly: true,
-		},
-	)
+	req, err := c.newRequest("user/challenge_login", http.MethodPost, reqBody)
 
 	req.Header.Add("__RequestVerificationToken", c.session.Token)
-	req.Header.Add("_ResponseSource", "Broswer")
-	req.Header.Add("DNT", "1")
 
-	resp, err := c.internalClient.Do(req)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	byteValue, _ := io.ReadAll(resp.Body)
-
-	var response models.ChallengeResp
-	err = xml.Unmarshal(byteValue, &response)
 
 	token2 := resp.Header.Get("__requestverificationtoken")
 	if token2 == "" {
@@ -198,6 +192,9 @@ func (c *Client) challengeToken() error {
 	}
 
 	c.session.Token2 = token2
+
+	var response models.ChallengeResp
+	c.parseResponse(resp, &response)
 
 	c.scram.SetNonce(response.ServerNonce)
 	c.scram.SetSalt(response.Salt)
@@ -211,7 +208,6 @@ func (c *Client) authenticateToken() error {
 		return err
 	}
 
-	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "user/authentication_login")
 	nonce, err := c.scram.GetNonce()
 	if err != nil {
 		return err
@@ -222,41 +218,11 @@ func (c *Client) authenticateToken() error {
 		FinalNonce:  string(nonce),
 	}
 
-	w := &bytes.Buffer{}
-	xmlHeader := `<?xml version: "1.0" encoding="UTF-8"?>`
-
-	w.WriteString(xmlHeader)
-	xml.NewEncoder(w).Encode(reqBody)
-
-	req, err := http.NewRequest(http.MethodPost, urlStr, bytes.NewBuffer(w.Bytes()))
-	if err != nil {
-		return err
-	}
-
-	req.AddCookie(
-		&http.Cookie{
-			Name:     "SessionID",
-			Value:    c.session.SessionId,
-			Path:     "/",
-			HttpOnly: true,
-		},
-	)
+	req, err := c.newRequest("user/authentication_login", http.MethodPost, reqBody)
 
 	req.Header.Add("__RequestVerificationToken", c.session.Token2)
-	req.Header.Add("_ResponseSource", "Broswer")
-	req.Header.Add("DNT", "1")
 
-	resp, err := c.internalClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	byteValue, err := io.ReadAll(resp.Body)
+	resp, err := c.do(req)
 	if err != nil {
 		return err
 	}
@@ -270,22 +236,69 @@ func (c *Client) authenticateToken() error {
 		return fmt.Errorf("session id not found")
 	}
 
-	var authLoginResp models.AuthenticationLoginResp
-	err = xml.Unmarshal(byteValue, &authLoginResp)
+	var response models.AuthenticationLoginResp
+	c.parseResponse(resp, &response)
 
 	newSession := &Session{
+		Host:      c.session.Host,
+		Username:  c.session.Username,
 		LoggedIn:  true,
 		SessionId: cookies[sessionIdIdx].Value,
 		Token:     resp.Header.Get("__requestverificationtokenone"),
 		Token2:    resp.Header.Get("__requestverificationtokentwo"),
 
 		PublicKey: PublicKey{
-			rsan: authLoginResp.RsaN,
-			rsae: authLoginResp.RsaE,
+			Rsan: response.RsaN,
+			Rsae: response.RsaE,
 		},
 	}
 
 	c.session = newSession
 
 	return err
+}
+
+func (c *Client) saveSession() error {
+	session := c.session
+	sessionJson, err := json.MarshalIndent(session, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	sessionFile, err := os.OpenFile("session.json", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+
+	defer sessionFile.Close()
+	_, err = sessionFile.Write(sessionJson)
+
+	log.Trace().Msg("session saved")
+
+	return err
+}
+
+func (c *Client) loadSession() error {
+	sessionFile, err := os.Open("session.json")
+	if err != nil {
+		if os.IsNotExist(err) {
+			return ErrSessionFileNotFound
+		}
+
+		return err
+	}
+
+	defer sessionFile.Close()
+
+	session := &Session{}
+	err = json.NewDecoder(sessionFile).Decode(session)
+	if err != nil {
+		return err
+	}
+
+	c.session = session
+
+	log.Trace().Msg("session loaded")
+
+	return nil
 }

@@ -1,18 +1,18 @@
 package huaweihilink
 
 type Session struct {
-	Host      string
-	Username  string
-	LoggedIn  bool
-	SessionId string
+	Host      string `json:"host"`
+	Username  string `json:"username"`
+	LoggedIn  bool   `json:"-"`
+	SessionId string `json:"session_id"`
 
-	Token  string
-	Token2 string
+	Token  string `json:"token"`
+	Token2 string `json:"token2"`
 
-	PublicKey PublicKey
+	PublicKey PublicKey `json:"public_key"`
 }
 
 type PublicKey struct {
-	rsan string
-	rsae string
+	Rsan string `json:"rsan"`
+	Rsae string `json:"rsae"`
 }
