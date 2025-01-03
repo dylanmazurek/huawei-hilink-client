@@ -3,9 +3,8 @@ package models
 import "encoding/xml"
 
 type HilinkResponse struct {
-	XMLName     xml.Name
-	SessionInfo string `xml:"SesInfo"`
-	TokenInfo   string `xml:"TokInfo"`
+	XMLName xml.Name
+	Data    string `xml:",chardata"`
 }
 
 func (t *HilinkResponse) UnmarshalXML(d *xml.Decoder, start xml.StartElement) error {

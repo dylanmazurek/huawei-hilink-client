@@ -35,6 +35,24 @@ func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response,
 	return adt.T.RoundTrip(req)
 }
 
+func (c *Client) checkSession() (*int, error) {
+	if c.session.LoggedIn {
+		return nil, nil
+	}
+
+	req, err := c.newRequest("user/heartbeat", http.MethodGet, nil)
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	var response models.HeartbeatResp
+	c.parseResponse(resp, &response)
+
+	return &response.Userlevel, err
+}
+
 func (c *Client) Login() error {
 	err := c.loadSession()
 	if err == nil {
@@ -298,7 +316,14 @@ func (c *Client) loadSession() error {
 
 	c.session = session
 
-	log.Trace().Msg("session loaded")
+	userLevel, err := c.checkSession()
+	if err != nil {
+		return err
+	}
+
+	if userLevel == nil || *userLevel < 1 {
+		return ErrSessionExpired
+	}
 
 	return nil
 }
