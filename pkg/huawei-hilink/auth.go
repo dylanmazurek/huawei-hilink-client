@@ -2,22 +2,21 @@ package huaweihilink
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"slices"
 
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/constants"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/crypto"
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/models"
 	"github.com/rs/zerolog/log"
 )
 
 type addAuthHeaderTransport struct {
 	T       http.RoundTripper
-	Session *Session
+	Session *models.Session
 }
 
 func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -35,24 +34,6 @@ func (adt *addAuthHeaderTransport) RoundTrip(req *http.Request) (*http.Response,
 	return adt.T.RoundTrip(req)
 }
 
-func (c *Client) checkSession() (*int, error) {
-	if c.session.LoggedIn {
-		return nil, nil
-	}
-
-	req, err := c.newRequest("user/heartbeat", http.MethodGet, nil)
-
-	resp, err := c.do(req)
-	if err != nil {
-		return nil, err
-	}
-
-	var response models.HeartbeatResp
-	c.parseResponse(resp, &response)
-
-	return &response.Userlevel, err
-}
-
 func (c *Client) Login() error {
 	err := c.loadSession()
 	if err == nil {
@@ -64,15 +45,19 @@ func (c *Client) Login() error {
 		log.Info().Msg("session loaded but failed to create auth transport")
 	}
 
-	err = c.newSession()
+	sessionId, err := c.newSession()
 	if err != nil {
 		return err
 	}
 
-	err = c.newTokenInfo()
+	c.session.SessionId = *sessionId
+
+	token, err := getTokenInfo(c.session.Host)
 	if err != nil {
 		return err
 	}
+
+	c.session.Token = *token
 
 	err = c.getToken()
 	if err != nil {
@@ -97,65 +82,6 @@ func (c *Client) Login() error {
 	c.internalClient, err = c.createAuthTransport()
 
 	return nil
-}
-
-func (c *Client) newSession() error {
-	urlStr := fmt.Sprintf("http://%s", c.session.Host)
-	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	cookies := resp.Cookies()
-	sessionIdIdx := slices.IndexFunc(cookies, func(cookie *http.Cookie) bool {
-		return cookie.Name == "SessionID"
-	})
-
-	if sessionIdIdx == -1 {
-		return fmt.Errorf("session id not found")
-	}
-
-	sessionId := cookies[sessionIdIdx]
-	c.session.SessionId = sessionId.Value
-
-	return err
-}
-
-func (c *Client) newTokenInfo() error {
-	urlStr := fmt.Sprintf("http://%s/%s/%s", c.session.Host, constants.API_PATH, "webserver/SesTokInfo")
-	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return err
-	}
-
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	byteValue, _ := io.ReadAll(resp.Body)
-
-	var sessionTokenInfo models.SessionTokenInfo
-	err = xml.Unmarshal(byteValue, &sessionTokenInfo)
-
-	c.session.Token = sessionTokenInfo.TokenInfo
-
-	return err
 }
 
 func (c *Client) getToken() error {
@@ -204,7 +130,7 @@ func (c *Client) challengeToken() error {
 		return err
 	}
 
-	token2 := resp.Header.Get("__requestverificationtoken")
+	token2 := resp.header.Get("__requestverificationtoken")
 	if token2 == "" {
 		return fmt.Errorf("token2 not found")
 	}
@@ -245,7 +171,7 @@ func (c *Client) authenticateToken() error {
 		return err
 	}
 
-	cookies := resp.Cookies()
+	cookies := resp.cookies
 	sessionIdIdx := slices.IndexFunc(cookies, func(cookie *http.Cookie) bool {
 		return cookie.Name == "SessionID"
 	})
@@ -257,15 +183,15 @@ func (c *Client) authenticateToken() error {
 	var response models.AuthenticationLoginResp
 	c.parseResponse(resp, &response)
 
-	newSession := &Session{
+	newSession := &models.Session{
 		Host:      c.session.Host,
 		Username:  c.session.Username,
 		LoggedIn:  true,
 		SessionId: cookies[sessionIdIdx].Value,
-		Token:     resp.Header.Get("__requestverificationtokenone"),
-		Token2:    resp.Header.Get("__requestverificationtokentwo"),
+		Token:     resp.header.Get("__requestverificationtokenone"),
+		Token2:    resp.header.Get("__requestverificationtokentwo"),
 
-		PublicKey: PublicKey{
+		PublicKey: models.PublicKey{
 			Rsan: response.RsaN,
 			Rsae: response.RsaE,
 		},
@@ -276,54 +202,95 @@ func (c *Client) authenticateToken() error {
 	return err
 }
 
-func (c *Client) saveSession() error {
-	session := c.session
-	sessionJson, err := json.MarshalIndent(session, "", "  ")
+// unauthenticated methods
+func getTokenInfo(host string) (*string, error) {
+	urlStr := fmt.Sprintf("http://%s/%s/%s", host, constants.API_PATH, "webserver/SesTokInfo")
+	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	sessionFile, err := os.OpenFile("session.json", os.O_CREATE|os.O_WRONLY, 0644)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	defer sessionFile.Close()
-	_, err = sessionFile.Write(sessionJson)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
 
-	log.Trace().Msg("session saved")
+	byteValue, _ := io.ReadAll(resp.Body)
 
-	return err
+	var sessionTokenInfo models.SessionTokenInfo
+	err = xml.Unmarshal(byteValue, &sessionTokenInfo)
+
+	return &sessionTokenInfo.TokenInfo, err
 }
 
-func (c *Client) loadSession() error {
-	sessionFile, err := os.Open("session.json")
+func getPublicKey(host string, sessionId string, token string) (*models.PublicKey, error) {
+	urlStr := fmt.Sprintf("http://%s/%s/%s", host, constants.API_PATH, "webserver/publickey")
+	req, err := http.NewRequest(http.MethodGet, urlStr, nil)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return ErrSessionFileNotFound
-		}
-
-		return err
+		return nil, err
 	}
 
-	defer sessionFile.Close()
+	req.Header.Add("__RequestVerificationToken", token)
 
-	session := &Session{}
-	err = json.NewDecoder(sessionFile).Decode(session)
+	req.AddCookie(
+		&http.Cookie{
+			Name:     "SessionID",
+			Value:    sessionId,
+			Path:     "/",
+			HttpOnly: true,
+		},
+	)
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	c.session = session
+	defer resp.Body.Close()
 
-	userLevel, err := c.checkSession()
+	byteValue, _ := io.ReadAll(resp.Body)
+
+	var publicKey models.PublicKey
+	err = xml.Unmarshal(byteValue, &publicKey)
+
+	return &publicKey, nil
+}
+
+func (c *Client) NewRSA() (*string, *models.PublicKey, error) {
+	sessionId, err := c.newSession()
 	if err != nil {
-		return err
+		return nil, nil, err
 	}
 
-	if userLevel == nil || *userLevel < 1 {
-		return ErrSessionExpired
+	token, err := getTokenInfo(c.session.Host)
+
+	scramOpts := []crypto.Option{}
+
+	smsScram, err := crypto.NewScram(scramOpts...)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	return nil
+	smsNonce, err := smsScram.GetNonce()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	smsSalt, err := smsScram.GetNonce()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	totalNonce := fmt.Sprintf("%s%s", hex.EncodeToString(smsNonce), hex.EncodeToString(smsSalt))
+	smsPublicKey, err := getPublicKey(c.session.Host, *sessionId, *token)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return &totalNonce, smsPublicKey, nil
 }

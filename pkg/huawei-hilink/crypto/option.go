@@ -2,7 +2,6 @@ package crypto
 
 import (
 	"crypto/sha256"
-	"errors"
 	"hash"
 )
 
@@ -26,14 +25,6 @@ func DefaultOptions() Options {
 	}
 
 	return defaultOptions
-}
-
-func ValidateOptions(opts Options) error {
-	if opts.password == "" {
-		return errors.New("password cannot be empty")
-	}
-
-	return nil
 }
 
 type Option func(*Options)

@@ -17,18 +17,12 @@ func main() {
 		panic(err)
 	}
 
-	// err = client.NewSession2()
-	// if err != nil {
-	// 	panic(err)
-	// }
-
 	err = client.Login()
 	if err != nil {
 		panic(err)
 	}
 
-	getSignalInfo(client)
-	// getSMSInfo(client)
+	sendSMS(client)
 }
 
 func getSignalInfo(client *huaweihilink.Client) {
@@ -58,14 +52,27 @@ func getSignalInfo(client *huaweihilink.Client) {
 }
 
 func getSMSInfo(client *huaweihilink.Client) {
-	smsInfo, err := client.GetSMSCount()
+	smsPages, err := client.GetSMSPages()
 	if err != nil {
 		panic(err)
 	}
 
-	tab := tabulate.New(tabulate.CompactUnicode)
-	row := tab.Row()
-	row.Column("Unread")
-	row.Column(fmt.Sprintf("%d", *smsInfo))
-	fmt.Println(tab.String())
+	fmt.Println("SMS Pages:", *smsPages)
+}
+
+func getSMSPage(client *huaweihilink.Client) {
+	smsPages, err := client.GetSMSPages()
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("hash:", smsPages.Hash)
+	fmt.Println("pwd:", smsPages.Pwd)
+}
+
+func sendSMS(client *huaweihilink.Client) {
+	_, err := client.PostSMS("+61413073143", "hello how are you?")
+	if err != nil {
+		panic(err)
+	}
 }

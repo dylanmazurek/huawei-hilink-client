@@ -11,12 +11,13 @@ import (
 
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/constants"
 	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/crypto"
+	"github.com/dylanmazurek/huawei-hilink-client/pkg/huawei-hilink/models"
 )
 
 type Client struct {
 	internalClient *http.Client
 
-	session *Session
+	session *models.Session
 	scram   *crypto.Scram
 }
 
@@ -34,7 +35,7 @@ func New(ctx context.Context) (*Client, error) {
 	newServiceClient := &Client{
 		internalClient: http.DefaultClient,
 
-		session: &Session{
+		session: &models.Session{
 			Host:     host,
 			Username: username,
 
@@ -103,27 +104,49 @@ func (c *Client) newRequest(path string, method string, body any) (*http.Request
 	return req, nil
 }
 
-func (c *Client) do(req *http.Request) (*http.Response, error) {
+type clientResp struct {
+	status int
+	body   []byte
+
+	header  http.Header
+	cookies []*http.Cookie
+}
+
+func (c *Client) do(req *http.Request) (*clientResp, error) {
 	resp, err := c.internalClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
 
-	return resp, nil
-}
-
-func (c *Client) parseResponse(resp *http.Response, respObj any) error {
-	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
 	byteValue, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = xml.Unmarshal(byteValue, respObj)
+	errResp := &models.ErrorResponse{}
+	err = xml.Unmarshal(byteValue, errResp)
+	if err == nil && errResp.Code != "" {
+		newErr := fmt.Errorf("error [%s] %s", errResp.Code, errResp.Message)
+		return nil, newErr
+	}
+
+	respClone := &clientResp{
+		status: resp.StatusCode,
+		header: resp.Header,
+
+		body:    byteValue,
+		cookies: resp.Cookies(),
+	}
+
+	return respClone, nil
+}
+
+func (c *Client) parseResponse(resp *clientResp, respObj any) error {
+	err := xml.Unmarshal(resp.body, respObj)
 	if err != nil {
 		return err
 	}

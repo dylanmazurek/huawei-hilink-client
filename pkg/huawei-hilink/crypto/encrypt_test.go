@@ -1,0 +1,70 @@
+package crypto
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+)
+
+func TestEncryptProduct(t *testing.T) {
+	tests := []struct {
+		name      string
+		encstring string
+		pubKeyN   string
+		nonce     string
+
+		expected string
+		wantErr  error
+	}{
+		{
+			name:      "short encstring",
+			encstring: "test123",
+			pubKeyN:   "a98c60db75a5b1d53eb0341f2153f60aed8588333c0b4b3e6c88b3c66dea6ccfbc0b0da3eea96278cd7faf5bda27dd13c321a0112c9e358a623abaeecabd297a1738a97532c6fc9bc0373c711b80df869131a9811cec8a59d5d1b7e95d769b209dd067ef6dbcf6f85ba7f2d3f526082b2044fada175c28d61aa93824bfa61294ded592751f3827589dbcc1dd6e6367f7df4cda293791985f7a4279f558e002e6d8f1f432c7018a799681356ae3fcd6e12f682ced8d4fcd1712a5b6b307b4dbc200e981ed1b2eb48ec55fddc2adc4609048b89eb29b8545064aa724d7a136dc46f889f30fc8febc62fbe61a2399965718dd1b41d9493bc2bbc4917ca936968aef",
+
+			expected: "0a97d07db61989d0fcee13bd48a85df93d88fa5f5c8d5b89364e2119c416ad4ae68806fa29afdeca068ed09eb956f9e4b2b7f98a6f2ce768532781420cae0b8c07131f74032b1287faa721a257f8034cdf91defd62442f83f207fdc172d324d076693214465db2cf3fc7d75e556be57921342359d9c0db39ee3bc07544756453e8b37b9449d2aa5f194d4e0d2d983620bcfccb282d88302e63a2654c711f5fbc839ab15fbf4be7c4cfcf85f8456ec7063bceab3d547284a6294d1518b991a6be9bb751087817ef4281eae271af6740cdc8ded3072749c6e60bac5ae8453788b747926c31aba5dd4fed8265258889d8b03669f73898733105a3fd6d946340446e",
+		},
+		{
+			name:      "real nonce encstring",
+			encstring: "bb0d249b32d9dbfa8ff785e71c2964bcc0e3e216029a8a56a64154641a5b062bbb0d249b32d9dbfa8ff785e71c2964bcc0e3e216029a8a56a64154641a5b062b",
+			pubKeyN:   "a98c60db75a5b1d53eb0341f2153f60aed8588333c0b4b3e6c88b3c66dea6ccfbc0b0da3eea96278cd7faf5bda27dd13c321a0112c9e358a623abaeecabd297a1738a97532c6fc9bc0373c711b80df869131a9811cec8a59d5d1b7e95d769b209dd067ef6dbcf6f85ba7f2d3f526082b2044fada175c28d61aa93824bfa61294ded592751f3827589dbcc1dd6e6367f7df4cda293791985f7a4279f558e002e6d8f1f432c7018a799681356ae3fcd6e12f682ced8d4fcd1712a5b6b307b4dbc200e981ed1b2eb48ec55fddc2adc4609048b89eb29b8545064aa724d7a136dc46f889f30fc8febc62fbe61a2399965718dd1b41d9493bc2bbc4917ca936968aef",
+
+			expected: "5e4febc6197b85eea0ccdbf8be6e7698e19a8d999c7319fd0f4a24b5d215af6d8cbd32460067192d34d4f1068b9d71be33c697678b22957f950d235f3bcae469892b354ddfad3297e93ae7fb373b8813f468691e06c9f7a28bec8532beba15689cb55d39c67dab0945088d825f9e03646791385ae9e833521188f18269895c647869fcd77473c5831e7457941f0622e74d8d438730717a447c7252103b7f09532a47c24ffdd632fb468026b7988df359d040c1969ff9fd3fe47e2b3d95757d17d05df5b5de494e521578f754d3c2089364b32685e976236afc73413af41b0a5e8ba2ee6fc2627f10c9fe1a363dd4824735a0b666633b378ae6ed3cae60785a40",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encrypted, err := RSAEncrypt(tt.encstring, tt.pubKeyN)
+			assert.Equal(t, tt.wantErr, err)
+			assert.Equal(t, tt.expected, *encrypted)
+		})
+	}
+}
+
+func TestDoubleEncryptProduct(t *testing.T) {
+	tests := []struct {
+		name      string
+		encstring string
+		pubKeyN   string
+		nonce     string
+
+		expected string
+		wantErr  error
+	}{
+		{
+			name:      "short encstring",
+			encstring: "test123",
+			pubKeyN:   "a98c60db75a5b1d53eb0341f2153f60aed8588333c0b4b3e6c88b3c66dea6ccfbc0b0da3eea96278cd7faf5bda27dd13c321a0112c9e358a623abaeecabd297a1738a97532c6fc9bc0373c711b80df869131a9811cec8a59d5d1b7e95d769b209dd067ef6dbcf6f85ba7f2d3f526082b2044fada175c28d61aa93824bfa61294ded592751f3827589dbcc1dd6e6367f7df4cda293791985f7a4279f558e002e6d8f1f432c7018a799681356ae3fcd6e12f682ced8d4fcd1712a5b6b307b4dbc200e981ed1b2eb48ec55fddc2adc4609048b89eb29b8545064aa724d7a136dc46f889f30fc8febc62fbe61a2399965718dd1b41d9493bc2bbc4917ca936968aef",
+
+			expected: "0a97d07db61989d0fcee13bd48a85df93d88fa5f5c8d5b89364e2119c416ad4ae68806fa29afdeca068ed09eb956f9e4b2b7f98a6f2ce768532781420cae0b8c07131f74032b1287faa721a257f8034cdf91defd62442f83f207fdc172d324d076693214465db2cf3fc7d75e556be57921342359d9c0db39ee3bc07544756453e8b37b9449d2aa5f194d4e0d2d983620bcfccb282d88302e63a2654c711f5fbc839ab15fbf4be7c4cfcf85f8456ec7063bceab3d547284a6294d1518b991a6be9bb751087817ef4281eae271af6740cdc8ded3072749c6e60bac5ae8453788b747926c31aba5dd4fed8265258889d8b03669f73898733105a3fd6d946340446e",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encrypted, err := RSAEncrypt(tt.encstring, tt.pubKeyN)
+			assert.Equal(t, tt.wantErr, err)
+			assert.Equal(t, tt.expected, *encrypted)
+		})
+	}
+}

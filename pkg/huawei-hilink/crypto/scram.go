@@ -49,8 +49,19 @@ func NewScram(opts ...Option) (*Scram, error) {
 	}
 
 	if clientOptions.nonce != nil && clientOptions.finalNonce != nil {
-		scram.firstNonce = []byte(*clientOptions.nonce)
-		scram.nonce = []byte(*clientOptions.finalNonce)
+		firstNonce, err := hex.DecodeString(*clientOptions.nonce)
+		if err != nil {
+			return nil, err
+		}
+
+		scram.firstNonce = firstNonce
+
+		finalNonce, err := hex.DecodeString(*clientOptions.finalNonce)
+		if err != nil {
+			return nil, err
+		}
+
+		scram.nonce = finalNonce
 	} else {
 		newNonce, err := newNonce(scram.keySizeBytes)
 		if err != nil {
@@ -64,11 +75,11 @@ func NewScram(opts ...Option) (*Scram, error) {
 }
 
 func (s *Scram) SetSalt(salt string) error {
-	if salt == "" {
+	if salt == "" || len(salt) == 0 {
 		return fmt.Errorf("salt cannot be empty")
 	}
 
-	if s.password == nil {
+	if s.password == nil || len(s.password) == 0 {
 		return fmt.Errorf("password cannot be nil")
 	}
 
@@ -102,6 +113,16 @@ func (s *Scram) SetNonce(nonce string) error {
 	s.firstNonce = s.nonce
 
 	s.nonce = []byte(nonce)
+	return nil
+}
+
+func (s *Scram) SetPassword(password string) error {
+	if password == "" {
+		return fmt.Errorf("password cannot be empty")
+	}
+
+	s.password = []byte(password)
+
 	return nil
 }
 
